@@ -48,6 +48,7 @@ export class ClickHouseClient {
         }
 
         const requestOptions: AxiosRequestConfig = {
+            method: 'POST',
             url,
             params,
             responseType: 'stream',
@@ -239,6 +240,28 @@ export class ClickHouseClient {
                     subscriber.error(reason);
                     this.options.logger.error(reason);
                 });
+        });
+    }
+
+    /**
+     * Promise based insert
+     * @private
+     */
+    private insertPromise<T = any>(table: string, data: T[]) {
+        return new Promise<any[]>((resolve, reject) => {
+            const _data: any[] = [];
+
+            this.insert<T>(table, data).subscribe({
+                error: (error) => {
+                    return reject(error);
+                },
+                next: (row) => {
+                    _data.push(row);
+                },
+                complete: () => {
+                    return resolve(_data);
+                }
+            });
         });
     }
 
