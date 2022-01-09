@@ -10,23 +10,28 @@ import * as zlib from 'zlib';
 import { Parser } from 'stream-json';
 import { Observable } from 'rxjs';
 
-import { ClickHouseConnectionProtocol, ClickHouseCompressionMethod, ClickHouseDataFormat } from './enums';
+import {
+    ClickHouseConnectionProtocol,
+    ClickHouseCompressionMethod,
+    ClickHouseDataFormat
+} from './enums';
 import { ClickHouseClientOptions } from './interfaces/ClickHouseClientOptions';
 
 export class ClickHouseClient {
     /**
-    * ClickHouse Service
-    */
-    constructor(
-        private options: ClickHouseClientOptions
-    ) {
+     * ClickHouse Service
+     */
+    constructor(private options: ClickHouseClientOptions) {
         this.options = Object.assign(new ClickHouseClientOptions(), options);
     }
 
     /**
      * Prepare request options
      */
-    private _getRequestOptions(query: string, withoutFormat: boolean = false): AxiosRequestConfig<any> {
+    private _getRequestOptions(
+        query: string,
+        withoutFormat: boolean = false
+    ): AxiosRequestConfig<any> {
         let url = this._getUrl();
 
         if (!withoutFormat) {
@@ -53,14 +58,17 @@ export class ClickHouseClient {
             httpAgent: this.options.httpAgent,
             httpsAgent: this.options.httpsAgent,
             transformResponse: (data: IncomingMessage) => {
-                if (this.options.compression == ClickHouseCompressionMethod.BROTLI) {
+                if (
+                    this.options.compression ==
+                    ClickHouseCompressionMethod.BROTLI
+                ) {
                     return data.pipe(zlib.createBrotliDecompress());
                 } else {
                     return data;
                 }
             },
             headers: this._getHeaders()
-        }
+        };
 
         return requestOptions;
     }
@@ -105,19 +113,17 @@ export class ClickHouseClient {
         return new Promise<T[]>((resolve, reject) => {
             const _data: T[] = [];
 
-            this
-                ._queryObservable<T>(query)
-                .subscribe({
-                    error: (error) => {
-                        return reject(error);
-                    },
-                    next: (row) => {
-                        _data.push(row);
-                    },
-                    complete: () => {
-                        return resolve(_data);
-                    }
-                });
+            this._queryObservable<T>(query).subscribe({
+                error: (error) => {
+                    return reject(error);
+                },
+                next: (row) => {
+                    _data.push(row);
+                },
+                complete: () => {
+                    return resolve(_data);
+                }
+            });
         });
     }
 
@@ -126,55 +132,55 @@ export class ClickHouseClient {
      * @private
      */
     private _queryObservable<T = any>(query: string) {
-        return new Observable<T>(subscriber => {
+        return new Observable<T>((subscriber) => {
             axios
-                .request(
-                    this._getRequestOptions(query)
-                )
+                .request(this._getRequestOptions(query))
                 .then((response) => {
                     const stream: IncomingMessage = response.data;
 
                     if (this.options.format == ClickHouseDataFormat.JSON) {
                         const pipeline = stream
                             .pipe(new Parser())
-                            .pipe(new Pick({
-                                filter: 'data'
-                            }))
-                            .pipe(new StreamArray())
+                            .pipe(
+                                new Pick({
+                                    filter: 'data'
+                                })
+                            )
+                            .pipe(new StreamArray());
 
                         pipeline
                             .on('data', (row) => {
                                 subscriber.next(row.value as T);
                             })
                             .on('end', () => {
-                                subscriber.complete()
-                            })
+                                subscriber.complete();
+                            });
                     } else {
-                        throw new Error("Unsupported data format. Only JSON is supported for now.")
+                        throw new Error(
+                            'Unsupported data format. Only JSON is supported for now.'
+                        );
                     }
                 })
                 .catch((reason) => {
                     if (reason && reason.response) {
                         let err: string = '';
 
-                        reason
-                            .response
-                            .data
-                            .on('data', chunk => {
-                                err += chunk.toString('utf8')
+                        reason.response.data
+                            .on('data', (chunk) => {
+                                err += chunk.toString('utf8');
                             })
                             .on('end', () => {
                                 this.options.logger.error(err.trim());
                                 subscriber.error(err.trim());
 
                                 err = '';
-                            })
+                            });
                     } else {
                         this.options.logger.error(reason);
                         subscriber.error(reason);
                     }
-                })
-        })
+                });
+        });
     }
 
     /**
@@ -195,29 +201,28 @@ export class ClickHouseClient {
      * Insert data to table
      */
     public insert<T = any>(table: string, data: T[]) {
-        return new Observable<any>(subscriber => {
+        return new Observable<any>((subscriber) => {
             let query = `INSERT INTO ${table}`;
             let _data: any;
 
             switch (this.options.format) {
                 case ClickHouseDataFormat.JSON:
                     query += ` FORMAT JSONEachRow`;
-                    _data = data.map(d => JSON.stringify(d)).join('\n');
+                    _data = data.map((d) => JSON.stringify(d)).join('\n');
                     break;
             }
 
             axios
                 .request(
-                    Object.assign(
-                        this._getRequestOptions(query, true),
-                        <AxiosRequestConfig>{
-                            responseType: 'stream',
-                            method: 'POST',
-                            data: _data,
-                            httpAgent: this.options.httpAgent,
-                            httpsAgent: this.options.httpsAgent
-                        }
-                    )
+                    Object.assign(this._getRequestOptions(query, true), <
+                        AxiosRequestConfig
+                    >{
+                        responseType: 'stream',
+                        method: 'POST',
+                        data: _data,
+                        httpAgent: this.options.httpAgent,
+                        httpsAgent: this.options.httpsAgent
+                    })
                 )
                 .then((response) => {
                     const stream: IncomingMessage = response.data;
@@ -230,16 +235,16 @@ export class ClickHouseClient {
                             subscriber.complete();
                         });
                 })
-                .catch(reason => {
+                .catch((reason) => {
                     subscriber.error(reason);
                     this.options.logger.error(reason);
-                })
+                });
         });
     }
 
     /**
      * Pings the clickhouse server
-     * 
+     *
      * @param timeout timeout in milliseconds, defaults to 3000.
      */
     public ping(timeout: number = 3000) {
@@ -261,7 +266,7 @@ export class ClickHouseClient {
                 })
                 .catch((reason) => {
                     return reject(reason);
-                })
+                });
         });
     }
 }
